@@ -112,6 +112,18 @@ typedef U8 WasiFileType;
 /* The file refers to a symbolic link inode */
 #define WASI_FILE_TYPE_SYMBOLIC_LINK 7
 
+/* Event types used by poll_oneoff to indicate which kind of event occurred */
+typedef U8 WasiEventType;
+
+/* A timer event generated from a clock subscription */
+#define WASI_EVENTTYPE_CLOCK 0
+
+/* The associated file descriptor is ready for reading */
+#define WASI_EVENTTYPE_FD_READ 1
+
+/* The associated file descriptor is ready for writing */
+#define WASI_EVENTTYPE_FD_WRITE 2
+
 /* File descriptor flags */
 typedef U16 WasiFdflags;
 
