@@ -141,6 +141,8 @@ struct timespec {
 
 #ifdef __MSL__
 #include <utime.h>
+#include <SIOUX.h>
+#include <Events.h>
 
 /* TODO: use fileno */
 #define STDIN_FILENO  0
@@ -3897,15 +3899,106 @@ WASI_IMPORT(U32, fd_fdstat_set_flags, (
 })
 
 WASI_IMPORT(U32, poll_oneoff, (
-    void* UNUSED(instance),
-    U32 UNUSED(inPointer),
-    U32 UNUSED(outPointer),
-    U32 UNUSED(subscriptionCount),
-    U32 UNUSED(eventCount)
+    void* instance,
+    U32 inPointer,
+    U32 outPointer,
+    U32 subscriptionCount,
+    U32 eventCountPointer
 ), {
-    /* TODO: */
-    WASI_TRACE(("poll_oneoff: unimplemented function"));
-    return WASI_ERRNO_NOSYS;
+    wasmMemory* memory = wasiMemory(instance);
+    const U32 subscriptionSize = 56;
+    const U32 eventSize = 32;
+
+    bool waitStdin = false;
+    U64 stdinUserdata = 0;
+    I64 timeout = -1; /* nanoseconds */
+
+    U32 i;
+    for (i = 0; i < subscriptionCount; i++) {
+        U32 subPtr = inPointer + i * subscriptionSize;
+        U64 userdata = i64_load(memory, subPtr);
+        U8 type = i32_load8_u(memory, subPtr + 8);
+
+        if (type == WASI_EVENTTYPE_CLOCK) {
+            timeout = i64_load(memory, subPtr + 32);
+        } else if (type == WASI_EVENTTYPE_FD_READ) {
+            U32 fd = i32_load(memory, subPtr + 16);
+            if (fd == STDIN_FILENO) {
+                waitStdin = true;
+                stdinUserdata = userdata;
+            }
+        }
+    }
+
+    /* Convert timeout to absolute timestamp */
+    I64 start = 0;
+#if defined(_POSIX_TIMERS) && (_POSIX_TIMERS > 0)
+    {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        start = (I64)ts.tv_sec * 1000000000ll + ts.tv_nsec;
+    }
+#else
+    {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        start = (I64)tv.tv_sec * 1000000000ll + (I64)tv.tv_usec * 1000ll;
+    }
+#endif
+    I64 expire = timeout >= 0 ? start + timeout : -1;
+
+    U32 events = 0;
+
+#ifdef __MSL__
+    while (true) {
+        EventRecord ev;
+        if (EventAvail(everyEvent, &ev)) {
+            if (ev.what == keyDown || ev.what == autoKey) {
+                if (SIOUXHandleOneEvent(&ev) && waitStdin) {
+                    U32 eptr = outPointer + events * eventSize;
+                    i64_store(memory, eptr, stdinUserdata);
+                    i32_store16(memory, eptr + 8, WASI_ERRNO_SUCCESS);
+                    i32_store8(memory, eptr + 10, WASI_EVENTTYPE_FD_READ);
+                    i64_store(memory, eptr + 16, 1);
+                    i32_store16(memory, eptr + 24, 0);
+                    events = 1;
+                    break;
+                }
+            } else {
+                SIOUXHandleOneEvent(&ev);
+            }
+        } else {
+            SIOUXHandleOneEvent(&ev);
+            SystemTask();
+        }
+
+        if (expire >= 0) {
+#if defined(_POSIX_TIMERS) && (_POSIX_TIMERS > 0)
+            struct timespec ts;
+            clock_gettime(CLOCK_MONOTONIC, &ts);
+            if ((I64)ts.tv_sec * 1000000000ll + ts.tv_nsec >= expire) {
+                break;
+            }
+#else
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            if ((I64)tv.tv_sec * 1000000000ll + (I64)tv.tv_usec * 1000ll >= expire) {
+                break;
+            }
+#endif
+        }
+    }
+#else
+    (void)waitStdin;
+    (void)stdinUserdata;
+    (void)expire;
+#endif
+
+    if (eventCountPointer != 0) {
+        i32_store(memory, eventCountPointer, events);
+    }
+
+    return WASI_ERRNO_SUCCESS;
 })
 
 static
