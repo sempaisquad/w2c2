@@ -628,6 +628,14 @@ typedef U32 WasiClock;
 /* The CPU-time clock associated with the current thread */
 #define WASI_CLOCK_THREAD_CPUTIME_ID 3
 
+/* Event types for poll_oneoff */
+#define WASI_EVENTTYPE_CLOCK 0
+#define WASI_EVENTTYPE_FD_READ 1
+#define WASI_EVENTTYPE_FD_WRITE 2
+
+/* Flags for clock subscriptions */
+#define WASI_SUBCLOCKFLAGS_SUBSCRIPTION_CLOCK_ABSTIME 1
+
 /* Permanent reference to the first directory entry within a directory */
 #define WASI_DIRCOOKIE_START 0
 

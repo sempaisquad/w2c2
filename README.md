@@ -161,7 +161,7 @@ make run-tests
 - [x] `path_rename`
 - [x] `path_symlink`
 - [x] `path_unlink_file`
-- [ ] `poll_oneoff`
+- [x] `poll_oneoff`
 - [x] `proc_exit`
 - [x] `random_get`
 - [ ] `sched_yield`
