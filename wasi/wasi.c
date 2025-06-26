@@ -3952,25 +3952,29 @@ WASI_IMPORT(U32, poll_oneoff, (
 #ifdef __MSL__
     while (true) {
         EventRecord ev;
-        if (EventAvail(everyEvent, &ev)) {
-            if (ev.what == keyDown || ev.what == autoKey) {
-                if (SIOUXHandleOneEvent(&ev) && waitStdin) {
-                    U32 eptr = outPointer + events * eventSize;
-                    i64_store(memory, eptr, stdinUserdata);
-                    i32_store16(memory, eptr + 8, WASI_ERRNO_SUCCESS);
-                    i32_store8(memory, eptr + 10, WASI_EVENTTYPE_FD_READ);
-                    i64_store(memory, eptr + 16, 1);
-                    i32_store16(memory, eptr + 24, 0);
-                    events = 1;
-                    break;
-                }
-            } else {
-                SIOUXHandleOneEvent(&ev);
+        Boolean got = WaitNextEvent(everyEvent, &ev, 1, NULL);
+        if (!got) {
+            ev.what = nullEvent;
+            ev.message = 0;
+            ev.modifiers = 0;
+        }
+
+        if (ev.what == keyDown || ev.what == autoKey) {
+            if (SIOUXHandleOneEvent(&ev) && waitStdin) {
+                U32 eptr = outPointer + events * eventSize;
+                i64_store(memory, eptr, stdinUserdata);
+                i32_store16(memory, eptr + 8, WASI_ERRNO_SUCCESS);
+                i32_store8(memory, eptr + 10, WASI_EVENTTYPE_FD_READ);
+                i64_store(memory, eptr + 16, 1);
+                i32_store16(memory, eptr + 24, 0);
+                events = 1;
+                break;
             }
         } else {
             SIOUXHandleOneEvent(&ev);
-            SystemTask();
         }
+
+        SystemTask();
 
         if (expire >= 0) {
 #if defined(_POSIX_TIMERS) && (_POSIX_TIMERS > 0)
@@ -4133,9 +4137,23 @@ WASI_IMPORT(U32, random_get, (
 WASI_IMPORT(U32, sched_yield, (
     void* UNUSED(instance)
 ), {
-    /* TODO: */
+#ifdef __MSL__
+    {
+        EventRecord ev;
+        Boolean got = WaitNextEvent(everyEvent, &ev, 1, NULL);
+        if (!got) {
+            ev.what = nullEvent;
+            ev.message = 0;
+            ev.modifiers = 0;
+        }
+        SIOUXHandleOneEvent(&ev);
+        SystemTask();
+    }
+    return WASI_ERRNO_SUCCESS;
+#else
     WASI_TRACE(("sched_yield: unimplemented function"));
     return WASI_ERRNO_NOSYS;
+#endif
 })
 
 WASI_IMPORT(U32, fd_allocate, (
